@@ -1,0 +1,21 @@
+[Desktop Entry]
+Type=Application
+Name=TinyHand
+GenericName=Screen pointer
+Comment=A tiny hand on a stick that points at things on your screen
+Exec=tinyhand
+Icon=tinyhand
+Terminal=false
+Categories=Utility;Education;Presentation;
+Keywords=pointer;presentation;laser;draw;annotate;screen;
+StartupNotify=false
+SingleMainWindow=true
+Actions=toggle;settings;
+
+[Desktop Action toggle]
+Name=Turn the pointer on or off
+Exec=tinyhand --toggle
+
+[Desktop Action settings]
+Name=Settings
+Exec=tinyhand --settings
