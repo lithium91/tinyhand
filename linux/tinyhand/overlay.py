@@ -7,6 +7,11 @@ mouse itself: clicks land on it (so nothing underneath is clicked), the
 real cursor is hidden by a blank cursor on the window, and keyboard focus
 gives us Esc and the "hold a key to click for real" modifier. The same
 code runs on plain X11 and on GNOME/KDE Wayland through XWayland.
+
+The window covers the monitor's work area, not the whole monitor: a
+full-screen window makes GNOME hide the top bar and the dock. Over those
+the real cursor shows and clicks reach them, like the menu bar and Dock
+in the macOS app.
 """
 import math
 import os
@@ -65,6 +70,7 @@ class OverlayWindow(Gtk.Window):
         self.monitor = display.get_monitor(monitor_index)
         self.geometry = self.monitor.get_geometry()
         self.workarea = self.monitor.get_workarea()
+        self.area = self._overlay_area()
 
         self.set_title("TinyHand")
         self.set_wmclass("tinyhand-overlay", "TinyHand")
@@ -84,10 +90,12 @@ class OverlayWindow(Gtk.Window):
             | Gdk.EventMask.KEY_RELEASE_MASK | Gdk.EventMask.ENTER_NOTIFY_MASK
             | Gdk.EventMask.LEAVE_NOTIFY_MASK | Gdk.EventMask.FOCUS_CHANGE_MASK
             | Gdk.EventMask.SCROLL_MASK | Gdk.EventMask.SMOOTH_SCROLL_MASK)
-        g = self.geometry
-        self.move(g.x, g.y)
-        self.set_default_size(g.width, g.height)
-        self.resize(g.width, g.height)
+        a = self.area
+        self.set_type_hint(Gdk.WindowTypeHint.NORMAL)
+        self.move(a.x, a.y)
+        self.set_default_size(a.width, a.height)
+        self.set_size_request(a.width, a.height)
+        self.resize(a.width, a.height)
 
         self.connect("draw", controller._on_draw)
         self.connect("motion-notify-event", controller._on_motion)
@@ -96,6 +104,7 @@ class OverlayWindow(Gtk.Window):
         self.connect("key-press-event", controller._on_key_press)
         self.connect("key-release-event", controller._on_key_release)
         self.connect("enter-notify-event", controller._on_enter)
+        self.connect("leave-notify-event", controller._on_leave)
         self.connect("focus-out-event", controller._on_focus_out)
         self.connect("scroll-event", lambda *_: True)
         self.connect("delete-event", lambda *_: True)
@@ -105,14 +114,28 @@ class OverlayWindow(Gtk.Window):
         gdkwin = self.get_window()
         gdkwin.set_cursor(Gdk.Cursor.new_for_display(self.get_display(), Gdk.CursorType.BLANK_CURSOR))
         self.show()
-        self.fullscreen_on_monitor(self.get_screen(), self.monitor_index)
+        a = self.area
+        self.move(a.x, a.y)
         self.set_keep_above(True)
 
+    def _overlay_area(self):
+        a = Gdk.Rectangle()
+        wa, g = self.workarea, self.geometry
+        a.x, a.y, a.width, a.height = wa.x, wa.y, wa.width, wa.height
+        if a.width <= 0 or a.height <= 0:
+            a.x, a.y, a.width, a.height = g.x, g.y, g.width, g.height
+        if (a.x, a.y, a.width, a.height) == (g.x, g.y, g.width, g.height):
+            # An undecorated window exactly the size of a monitor counts as
+            # full-screen for mutter (and hides the panel and dock); one
+            # pixel short does not.
+            a.height -= 1
+        return a
+
     def local(self, x_root, y_root):
-        return (x_root - self.geometry.x, y_root - self.geometry.y)
+        return (x_root - self.area.x, y_root - self.area.y)
 
     def size(self):
-        return (self.geometry.width, self.geometry.height)
+        return (self.area.width, self.area.height)
 
     def queue(self, rect):
         if not rect:
@@ -138,6 +161,7 @@ class Overlay:
         self.drag_events = 0
         self.reveal_until = 0.0
         self.interacting = False
+        self.outside = False
         self._interact_poll = None
         self._focus_lost_at = None
         self._tick_id = None
@@ -218,6 +242,9 @@ class Overlay:
         mon = display.get_monitor_at_point(x, y)
         start = next((w for w in self.windows if w.monitor == mon), self.windows[0])
         self._set_win(start, start.local(x, y), moving=False)
+        lx, ly = start.local(x, y)
+        aw, ah = start.size()
+        self.outside = not (0 <= lx < aw and 0 <= ly < ah)
         self._present(timestamp)
 
         now = time.monotonic()
@@ -253,6 +280,7 @@ class Overlay:
         self.windows = []
         self.win = None
         self.cursor = None
+        self.outside = False
         if self.on_active_changed:
             self.on_active_changed()
 
@@ -276,8 +304,7 @@ class Overlay:
             self.win = win
             w, h = win.size()
             self.pointer.resize(w, h, win.get_scale_factor())
-            wa, g = win.workarea, win.geometry
-            self.toolbar.place(wa.x - g.x + wa.width / 2, wa.y - g.y + wa.height)
+            self.toolbar.place(w / 2, h)
             if moving:
                 self.reveal_until = time.monotonic() + 1.5
             win.queue_draw()
@@ -411,7 +438,8 @@ class Overlay:
         now = time.monotonic()
         self.ink.draw(cr, now)
         self.toolbar.draw(cr, now)
-        self.pointer.hidden = self.interacting and not prefs.get("interactKeepsHand")
+        self.pointer.hidden = (self.interacting and not prefs.get("interactKeepsHand")) \
+            or (self.outside and self.down_point is None)
         box = self.pointer.draw(cr)
         if box:
             x0, y0, x1, y1 = cr.clip_extents()
@@ -422,13 +450,30 @@ class Overlay:
     # ------------------------------------------------------------ input
 
     def _on_enter(self, win, event):
+        if self.outside:
+            self.outside = False
+            win.queue_draw()
         self._set_win(win, (event.x, event.y))
         if not win.has_toplevel_focus() and not self.interacting:
             win.present_with_time(event.time)
         self._kick()
         return False
 
+    def _on_leave(self, win, event):
+        """The mouse went to the top bar, the dock or past the edge: the real
+        cursor is there, so put the hand away until it comes back."""
+        if win is not self.win or event.mode != Gdk.CrossingMode.NORMAL \
+                or event.detail == Gdk.NotifyType.INFERIOR:
+            return False
+        self.outside = True
+        win.queue(self.pointer.bbox)
+        self.toolbar.hover = None
+        self._kick()
+        return False
+
     def _on_motion(self, win, event):
+        if self.outside:
+            self.outside = False
         if win is not self.win:
             self._set_win(win, (event.x, event.y))
         self.cursor = (event.x, event.y)

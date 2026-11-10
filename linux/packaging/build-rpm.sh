@@ -2,7 +2,7 @@
 # Build dist/tinyhand-<version>-1.noarch.rpm (needs rpmbuild)
 set -eu
 cd "$(dirname "$0")/.."
-VERSION=$(cat ../VERSION)
+VERSION=${VERSION:-$(cat ../VERSION)}
 TOP="$PWD/build/rpm"
 rm -rf "$TOP"
 mkdir -p "$TOP/SOURCES" "$TOP/SPECS" dist

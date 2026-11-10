@@ -2,7 +2,7 @@
 # Build dist/tinyhand_<version>_all.deb
 set -eu
 cd "$(dirname "$0")/.."
-VERSION=$(cat ../VERSION)
+VERSION=${VERSION:-$(cat ../VERSION)}
 ROOT=build/deb
 rm -rf "$ROOT"
 make install DESTDIR="$PWD/$ROOT" PREFIX=/usr >/dev/null
