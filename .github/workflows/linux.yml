@@ -3,7 +3,8 @@ name: Linux packages
 on:
   push:
     branches: [main]
-    tags: ["linux-v*"]
+  release:
+    types: [published]
   pull_request:
     paths: ["linux/**", "assets/**", "VERSION", ".github/workflows/linux.yml"]
   workflow_dispatch:
@@ -27,7 +28,13 @@ jobs:
       - name: Check
         run: xvfb-run -a make check PY=/usr/bin/python3
       - name: Build .deb and .rpm
-        run: make deb rpm
+        run: |
+          # a release tagged linux-v1.2.3 builds version 1.2.3; otherwise ../VERSION
+          if [ "${{ github.event_name }}" = release ]; then
+            export VERSION="${GITHUB_REF_NAME#linux-v}"
+            export VERSION="${VERSION#v}"
+          fi
+          make deb rpm
       - uses: actions/upload-artifact@v4
         with:
           name: tinyhand-linux
@@ -36,9 +43,10 @@ jobs:
             linux/dist/*.rpm
             /tmp/tinyhand-render.png
       - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/linux-v')
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name }}
           files: |
             linux/dist/*.deb
             linux/dist/*.rpm

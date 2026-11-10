@@ -41,8 +41,13 @@ tinyhand --toggle | --on | --off | --clear | --settings | --quit
 
 The macOS app keeps a click-through overlay and steals clicks with a system event
 tap. Wayland doesn't allow that, so on Linux the overlay is a transparent,
-full-screen, always-on-top window on every monitor that takes the mouse itself.
-The same code runs on X11 and under XWayland. The trade-offs:
+always-on-top window on every monitor that takes the mouse itself. The same code
+runs on X11 and under XWayland. The trade-offs:
+
+* **Top bar and dock stay usable.** The overlay covers the work area, not the whole
+  monitor, so the top bar and the dock stay visible. Over them you get the normal
+  cursor and real clicks, like the menu bar and Dock in the Mac app; the hand
+  can't point at them.
 
 * **Keyboard focus.** While the pointer is on, the overlay has the keyboard
   focus (that is how Esc and "hold Alt to click for real" work), so you can't

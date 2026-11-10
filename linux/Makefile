@@ -5,7 +5,8 @@
 
 PREFIX ?= /usr
 DESTDIR ?=
-VERSION := $(shell cat ../VERSION)
+VERSION ?= $(shell cat ../VERSION)
+export VERSION
 SHARE := $(DESTDIR)$(PREFIX)/share
 PY ?= python3
 
