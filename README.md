@@ -15,6 +15,9 @@ A tiny hand on a stick that points at things on your Mac screen.
 
 macOS 13 or later, Apple Silicon and Intel.
 
+**Linux:** a port lives in [`linux/`](linux/README.md) (Ubuntu 26.04 and other GNOME, KDE
+and X11 desktops; `.deb` and `.rpm` packages).
+
 ## Install
 
 Open `TinyHand.dmg`, drag TinyHand to Applications and allow **Accessibility** when asked. It needs that to turn your clicks into taps. TinyHand updates itself.
